@@ -1,0 +1,190 @@
+global {
+    log_level: info
+
+    lan_interface: br-lan 
+    wan_interface: auto
+
+    tproxy_port: 12345
+    tproxy_port_protect: true
+
+    disable_waiting_network: true
+
+    auto_config_kernel_parameter: true
+
+    tcp_check_url: 'http://connectivitycheck.gstatic.com/generate_204'
+    udp_check_dns: 'dns.google:53'
+
+    tcp_check_http_method: HEAD
+
+    dial_mode: domain
+
+    sniffing_timeout: 300ms
+
+    allow_insecure: false
+
+    tls_implementation: tls
+    tls_fragment: false
+
+    mptcp: false
+
+    so_mark_from_dae: 0
+
+    fallback_resolver: '9.9.9.9:53'
+
+}
+
+dns {
+
+    bind: '127.0.0.1:5353'
+
+    ipversion_prefer: 4
+
+    upstream {
+        google_DoH: 'https://dns.google/dns-query'
+    }
+
+    routing {
+        request {
+            qname(geosite:category-ads-all) -> reject
+            qname(geosite:private) -> asis
+            qname(suffix: ru, 
+                suffix: ru.com,
+                suffix: xn--p1ai,
+                geosite:category-ru,
+                geosite:category-ecommerce-ru,
+                geosite:category-entertainment-ru, 
+                geosite:category-gov-ru, 
+                geosite:category-retail-ru, 
+                geosite:category-travel-ru,
+                geosite:category-bank-ru,
+                geosite:tld-ru,
+                geosite:vk,
+                geosite:mailru,
+                geosite:mailru-group,
+                geosite:yandex,
+                geosite:ok,
+                geosite:dzen,
+                geosite:avito,
+                geosite:ozon,
+                geosite:wildberries,
+                geosite:rutube,
+                geosite:kinopoisk,
+                geosite:okko
+            ) -> asis
+            qtype(aaaa) -> reject
+            qtype(https) -> reject
+
+            fallback: google_DoH
+        }
+    }
+}
+
+node {
+}
+
+subscription {
+}
+
+group {
+    proxy_group { #поменять название, если нужно, но так же заменить и название в правилах роутинга
+        policy: fixed(0)
+    }
+}
+
+routing {
+    pname(dnsmasq, dropbear) -> must_direct
+    dip(127.0.0.0/8,
+        10.0.0.0/8,
+        100.64.0.0/10,
+        169.254.0.0/16,
+        172.16.0.0/12,
+        192.0.0.0/24
+    ) -> must_direct
+    dip('::1/128',
+        'fe80::/10',
+        'ff00::/8'
+    ) -> must_direct
+    l4proto(udp) && dport(443) -> block
+    domain(geosite:category-ads-all) -> block
+    dip(geoip:private) -> direct
+    domain(geosite:category-doh) -> proxy_group
+    dip(1.1.1.1, 1.0.0.1) -> proxy_group
+    dip(8.8.8.8, 8.8.4.4) -> proxy_group
+    dscp(0x4) -> direct
+#    domain(geosite:cloudflare,
+#        geosite:cloudflare-ipfs,
+#        geosite:fastly,
+#        geosite:akamai,
+#        geosite:hcaptcha,
+#        geosite:azure,
+#        geosite:cdn77,
+#        geosite:jsdelivr,
+#        geosite:stackpath,
+#        geosite:digitalocean,
+#        geosite:vercel,
+#        geosite:netlify,
+#        geosite:letsencrypt,
+#        geosite:digicert,
+#        geosite:globalsign,
+#        geosite:verisign,
+#        geosite:verisign-pki,
+#        geosite:sectigo,
+#        geosite:aws,
+#        geosite:amazon,
+#        geosite:sentry
+#    ) -> proxy_group
+#        domain(suffix: cdnetworks.net,
+#        suffix: cdnetworks.com,
+#        suffix: cloudfront.net,
+#        suffix: recaptcha.net,
+#        suffix: gstatic.com,
+#        suffix: arkoselabs.com,
+#        suffix: funcaptcha.com,
+#        suffix: auth0.com,
+#        suffix: okta.com,
+#        suffix: oktapreview.com,
+#        suffix: onelogin.com,
+#        suffix: bunnycdn.net,
+#        suffix: bunnycdn.com,
+#        suffix: datadoghq.com,
+#        suffix: pusher.com,
+#        suffix: pusherapp.com,
+#        suffix: googleapis.com,
+#        suffix: gvt1.com,
+#        suffix: appspot.com,
+#        suffix: run.app,
+#        suffix: cloudfunctions.net
+#        ) -> proxy_group
+    domain(geosite:youtube,
+        geosite:instagram,
+        geosite:telegram,
+        geosite:whatsapp,
+        geosite:viber,
+        geosite:twitter,
+        geosite:discord,
+        geosite:twitch,
+        geosite:rutracker,
+        geosite:category-media-ru,
+        geosite:category-web-archive,
+        geosite:category-ipfs,
+        geosite:category-porn,
+        geosite:libgen,
+        geosite:category-anticensorship,
+        geosite:category-proxy-tunnels,
+        geosite:category-vpnservices,
+        geosite:category-pt,
+        geosite:category-public-tracker,
+        geosite:category-android-app-download
+    ) -> proxy_group
+    domain(geosite:category-ai-!cn,
+        geosite:soundcloud,
+        geosite:gog
+    ) -> proxy_group
+    domain(suffix: stripe.com,
+        geosite:paypal,
+        geosite:category-cryptocurrency,
+    ) -> proxy_group
+    domain(geosite:category-ddns) -> proxy_group
+
+    fallback: direct
+}
