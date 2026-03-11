@@ -1,0 +1,106 @@
+#!/bin/sh
+
+WEEK_NUM=$(date +%V)
+if [ $((WEEK_NUM % 2)) -ne 0 ]; then
+    echo "Skip update, not odd week"
+    exit 0
+fi
+
+LOG_TAG="dae-geo-update"
+TMP_DIR="/tmp/dae-geo.$$"
+DEST_DIR="/usr/share/dae"
+
+GEOSITE_URL="https://github.com/v2fly/domain-list-community/releases/latest/download/dlc.dat"
+GEOIP_URL="https://github.com/v2fly/geoip/releases/latest/download/geoip.dat"
+
+#GEOSITE_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat"                                                                                             
+#GEOIP_URL="https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat"
+
+# --- cleanup on ANY exit ---
+
+cleanup() {
+rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT INT TERM
+
+mkdir -p "$TMP_DIR" || exit 1
+mkdir -p "$DEST_DIR" || exit 1
+
+logger -t "$LOG_TAG" "Checking geo databases..."
+
+download_if_changed() {
+URL="$1"
+NAME="$2"
+
+TMP_FILE="$TMP_DIR/$NAME"
+HASH_FILE="$TMP_DIR/$NAME.sha256"
+DEST_FILE="$DEST_DIR/$NAME"
+
+# 1. download checksum
+uclient-fetch -T 60 -O "$HASH_FILE" "${URL}.sha256sum" || {
+    logger -t "$LOG_TAG" "Failed to fetch checksum for $NAME"
+    return 1
+}
+
+# extract hash (first field)
+NEW_HASH="$(cut -d' ' -f1 "$HASH_FILE")"
+
+# 2. compare with local
+if [ -f "$DEST_FILE" ]; then
+    LOCAL_HASH="$(sha256sum "$DEST_FILE" | cut -d' ' -f1)"
+    if [ "$LOCAL_HASH" = "$NEW_HASH" ]; then
+        logger -t "$LOG_TAG" "$NAME is up to date"
+        return 2
+    fi
+fi
+
+# 3. download new database
+logger -t "$LOG_TAG" "Downloading new $NAME"
+rm -f "$TMP_FILE"
+
+uclient-fetch -T 60 -O "$TMP_FILE" "$URL" || {
+    logger -t "$LOG_TAG" "Download failed for $NAME"
+    return 1
+}
+
+[ -s "$TMP_FILE" ] || {
+    logger -t "$LOG_TAG" "Downloaded file empty: $NAME"
+    return 1
+}
+
+# 4. verify checksum
+DOWN_HASH="$(sha256sum "$TMP_FILE" | cut -d' ' -f1)"
+if [ "$DOWN_HASH" != "$NEW_HASH" ]; then
+    logger -t "$LOG_TAG" "Checksum mismatch for $NAME"
+    return 1
+fi
+
+# 5. atomic replace
+mv -f "$TMP_FILE" "${DEST_FILE}.new" || return 1
+mv -f "${DEST_FILE}.new" "$DEST_FILE" || return 1
+
+logger -t "$LOG_TAG" "$NAME updated"
+return 0
+
+}
+
+UPDATED=0
+
+download_if_changed "$GEOSITE_URL" "geosite.dat"
+RES=$?
+[ $RES -eq 1 ] && exit 1
+[ $RES -eq 0 ] && UPDATED=1
+
+download_if_changed "$GEOIP_URL" "geoip.dat"
+RES=$?
+[ $RES -eq 1 ] && exit 1
+[ $RES -eq 0 ] && UPDATED=1
+
+if [ "$UPDATED" -eq 1 ]; then
+logger -t "$LOG_TAG" "Reloading dae"
+/etc/init.d/dae reload || /etc/init.d/dae restart
+else
+logger -t "$LOG_TAG" "No updates"
+fi
+
+exit 0
