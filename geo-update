@@ -1,11 +1,5 @@
 #!/bin/sh
 
-WEEK_NUM=$(date +%V)
-if [ $((WEEK_NUM % 2)) -ne 0 ]; then
-    echo "Skip update, not odd week"
-    exit 0
-fi
-
 LOG_TAG="dae-geo-update"
 TMP_DIR="/tmp/dae-geo.$$"
 DEST_DIR="/usr/share/dae"
